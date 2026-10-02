@@ -1,0 +1,26 @@
+# Control-plane runtime deps. Stack is LOCKED — nothing outside it.
+fastapi==0.141.1
+# Starlette is FastAPI's own dependency and we never named it, which is exactly how
+# it went unnoticed: the first audit that could fail (2026-09-07) found seven
+# advisories against the 0.41.3 it was pulling, and fastapi 0.115.6 capped it below
+# every fixed release, so the fastapi pin had to move with it. Named here from now
+# on, so the version we serve HTTP with is a decision rather than a consequence.
+starlette==1.6.0
+uvicorn[standard]==0.34.0
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0          # Postgres async driver (prod / compose)
+aiosqlite==0.20.0        # SQLite async driver (Docker-free smoke tests)
+alembic==1.14.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+# W6 — results, artifacts, auth (FR-9/10/11).
+minio==7.2.15            # the ONE MinIO client, in the control plane only (workers never hold storage creds)
+PyJWT==2.13.0            # user JWTs (stateless auth; the pass card the server verifies by signature)
+bcrypt==4.2.1            # slow, salted password hash — a stolen users table does not give up passwords
+python-multipart==0.0.32 # FastAPI needs it to parse the multipart artifact upload
+# W6b — private job inputs (FR/NFR-7).
+# Pins moved 2026-09-07: the security audit was made able to fail (finding 7) and its
+# first real run found advisories against the old pins; each moved to the first
+# release OSV lists as fixed for every advisory (or later). Proof:
+# docs/evidence/audit_fixes_2026-09-07.txt.
+cryptography==50.0.1     # AES-GCM: one operation gives secrecy AND tamper detection

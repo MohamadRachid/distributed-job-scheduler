@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<!--
+  W1 DEMO SURFACE — THROWAWAY.
+
+  A single static page that polls GET /nodes every 2s and renders a plain table.
+  This is NOT the real frontend: React + Vite arrives in W3 with the job-submit
+  form and live log streaming. Standing up the toolchain now for a read-only table
+  would be gold-plating. The point of this page is to *see* the online -> offline
+  flip the moment an agent stops heart-beating.
+
+  Open directly in a browser, or serve it:  python -m http.server 5500  (from web/)
+  Override the API base with ?api=  e.g.  index.html?api=http://192.168.1.10:8000
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FYP — Node Pool (W1 demo)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; }
+    h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
+    .meta { color: #666; font-size: 0.85rem; margin-bottom: 1rem; }
+    table { border-collapse: collapse; width: 100%; max-width: 60rem; }
+    th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #e0e0e0; font-size: 0.9rem; }
+    th { background: #f5f5f5; font-weight: 600; }
+    .pill { display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+    .online { background: #d6f5dd; color: #14702a; }
+    .offline { background: #f7d7d7; color: #8c1c1c; }
+    .empty { color: #888; font-style: italic; }
+    code { background: #f0f0f0; padding: 0 0.25rem; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h1>Node Pool <span class="pill" style="background:#eee;color:#666;">W1 demo surface</span></h1>
+  <div class="meta">
+    Polling <code id="endpoint"></code> every 2s. Liveness is <strong>derived</strong>
+    (online ⇔ last heartbeat within NODE_TIMEOUT_S) — the server never stores "offline".
+    <span id="status"></span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th><th>Liveness</th><th>Reported</th><th>CPU</th>
+        <th>GPU</th><th>RAM (MB)</th><th>Capacity</th><th>Last heartbeat (UTC)</th>
+      </tr>
+    </thead>
+    <tbody id="rows"><tr><td colspan="8" class="empty">loading…</td></tr></tbody>
+  </table>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const API = (params.get("api") || "http://localhost:8000").replace(/\/$/, "");
+    document.getElementById("endpoint").textContent = API + "/nodes";
+
+    function cell(v) { return `<td>${v}</td>`; }
+
+    async function poll() {
+      const statusEl = document.getElementById("status");
+      try {
+        const res = await fetch(API + "/nodes");
+        const nodes = await res.json();
+        const tbody = document.getElementById("rows");
+        if (!nodes.length) {
+          tbody.innerHTML = `<tr><td colspan="8" class="empty">no nodes registered yet — start an agent</td></tr>`;
+        } else {
+          tbody.innerHTML = nodes.map(n => {
+            const live = n.online
+              ? '<span class="pill online">online</span>'
+              : '<span class="pill offline">offline</span>';
+            return "<tr>"
+              + cell(n.name) + cell(live) + cell(n.reported_status)
+              + cell(n.cpu_cores) + cell(n.has_gpu ? "yes" : "no")
+              + cell(n.ram_mb) + cell(n.capacity)
+              + cell(n.last_heartbeat ?? "—")
+              + "</tr>";
+          }).join("");
+        }
+        statusEl.textContent = " · last updated " + new Date().toLocaleTimeString();
+      } catch (e) {
+        statusEl.textContent = " · ⚠ cannot reach API (" + e.message + ")";
+      }
+    }
+
+    poll();
+    setInterval(poll, 2000);
+  </script>
+</body>
+</html>

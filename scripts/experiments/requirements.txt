@@ -1,0 +1,9 @@
+# Host-side analysis deps for the W7a measurement harness. NOT product code and
+# NOT installed into any shipped image — the control plane and the agent are
+# untouched by this file.
+#
+#   .venv\Scripts\python.exe -m pip install -r scripts/experiments/requirements.txt
+#
+# `requests` and `psutil` are already in the repo venv (the agent needs psutil).
+matplotlib>=3.9
+requests>=2.31

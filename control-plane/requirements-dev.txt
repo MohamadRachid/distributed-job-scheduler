@@ -1,0 +1,5 @@
+-r requirements.txt
+# Test stack — the W1 smoke test runs without Docker (SQLite in-memory).
+pytest==9.1.1           # moved 2026-09-07: 8.3.4 carried GHSA-6w46-j5rx-g56g (tmpdir handling), fixed in 9.0.3
+pytest-asyncio==1.4.0   # 1.x: the release line that supports pytest 9 (moved 2026-09-07 with pytest)
+httpx==0.28.1

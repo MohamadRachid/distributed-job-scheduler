@@ -1,0 +1,132 @@
+==============================================================================
+  LIVE PROOF -- head-of-line blocking in the claim query
+  started 2026-09-05T16:28:09+00:00
+==============================================================================
+
+LIMBS, stated before anything runs:
+  1. BEFORE the fix, on this stack, a one-core machine is offered NOTHING with four runs it cannot take ahead of it
+  2. AFTER the fix, the same machine on the same queue is offered the run it can take
+  3. how many unclaimable runs are ahead of it does not matter (measured at 4, 12 and 40)
+  4. among the runs it CAN take, the oldest is still the one it takes
+  5. the runs it cannot take are still waiting afterwards -- none were swept away
+  6. when their machine comes back, it is offered its own work
+  7. a real agent picks the freed run up and runs it to SUCCEEDED
+  8. the cost of walking a long queue is measured, not assumed
+  9. a run aimed at an absent machine WAITS and says what it is waiting for
+  10. both suites and the chaos test are green on this tree, and the contention campaign's own answer is recorded
+
+CONDITIONS
+  tree              9fe92e3
+  dirty files       37
+  before-ref        0c220c2 (the tree with the fixed candidate window)
+  /health           200 {"status": "ok", "experiment_mode": {"guarantee": "full", "claim": "skip_locked", "reschedule": "learned"}, "mode_epoch": "9851a7a18e8c"}
+  alembic head      c4d5e6f7a8b9
+  claim index       ix_runs_status_created_at
+  pending runs now  5
+
+[16:28:10] registered ghost-162809 and let it fall silent: node 8340f563-e807-45f9-881c-4c9155f4c93c
+
+------------------------------------------------------------------------------
+PART A -- the same question, asked of the code as it stood before the fix
+------------------------------------------------------------------------------
+[16:28:10] restored control-plane/app/scheduler.py byte for byte from 0c220c2 (32777 bytes) through the compose bind mount
+[16:28:14] the query it is running: .limit(spare * _CANDIDATE_MULTIPLIER)
+[16:28:14] queue: 4 runs aimed at the silent machine, then one run each for two identical one-core machines
+[16:28:14] untargeted runs already waiting in this queue (claimable by anyone): 0
+[16:28:15] machine A was offered 0 assignment(s), 0 of them this job's
+[16:28:15] both runs of this job are still ['PENDING', 'PENDING']
+[16:28:19] restored today's control-plane/app/scheduler.py and restarted
+
+------------------------------------------------------------------------------
+PART B -- the same queue, one restart later
+------------------------------------------------------------------------------
+[16:28:19] the one-core machine was offered 1 assignment(s) in 40 ms
+[16:28:19] it was offered 1, of which 1 is this job's -- the run PART A's machine could not see
+
+------------------------------------------------------------------------------
+PART C -- how many are ahead of it
+------------------------------------------------------------------------------
+[16:28:20]   4 runs it cannot take ahead of it -> offered 1, correct run: True, 21 ms
+[16:28:20]  12 runs it cannot take ahead of it -> offered 1, correct run: True, 31 ms
+[16:28:21]  40 runs it cannot take ahead of it -> offered 1, correct run: True, 40 ms
+
+------------------------------------------------------------------------------
+PART D -- the order it takes them in, and what it left behind
+------------------------------------------------------------------------------
+[16:28:22] submitted an older and a newer ordinary run; the machine took the OLDER
+[16:28:22] the newer one is PENDING
+[16:28:23] runs aimed at the silent machine: 60 created, 60 still PENDING -- none were swept away
+
+------------------------------------------------------------------------------
+PART E -- the silent machine comes back
+------------------------------------------------------------------------------
+[16:28:23] it heart-beats for the first time in this proof and is offered 4 assignment(s)
+[16:28:23] the run it was offered is one that was aimed at it: True
+
+------------------------------------------------------------------------------
+PART F -- a real agent, a real container
+------------------------------------------------------------------------------
+[16:28:27] a real agent is online: d99ddd0b-bdfa-4905-b1dc-cfc9197e0303
+[16:28:27] eight more runs aimed at the silent machine, then one aimed at the real agent
+[16:28:34] the real run finished: SUCCEEDED
+
+------------------------------------------------------------------------------
+PART G -- what walking a long queue costs
+------------------------------------------------------------------------------
+[16:28:34]   71 pending runs, none of them takeable: heartbeat median 35 ms  (min 16, max 36, n=5)
+[16:28:37]  171 pending runs, none of them takeable: heartbeat median 21 ms  (min 19, max 43, n=5)
+[16:28:42]  371 pending runs, none of them takeable: heartbeat median 40 ms  (min 28, max 80, n=5)
+[16:28:42] the walk is bounded by MAX_CLAIM_SCAN = 5000 rows per heartbeat, read out of control-plane/app/scheduler.py, and far past anything this project runs
+
+------------------------------------------------------------------------------
+PART H -- what the interface says about a run that cannot be placed
+------------------------------------------------------------------------------
+[16:28:42] the choice, stated: such a run WAITS rather than failing after
+           a stated time. A machine that is offline may come back, which is
+           the same reasoning the trust tier has used since W6b, and the
+           opposite of W5c's INSUFFICIENT_POOL, which fails fast because no
+           amount of waiting can conjure a bigger machine. What was wrong
+           was never the waiting -- it was the silence.
+[16:28:42] GET /jobs/{id}/runs says: 'waiting for ghost-162809 (silent for 19s)'
+[16:28:42] its status is PENDING -- waiting, not failed
+[16:28:42] an ordinary waiting run says: None
+
+------------------------------------------------------------------------------
+PART I -- the suites, the chaos test, and the contention campaign
+------------------------------------------------------------------------------
+[16:28:42] control-plane suite, in the pinned container, with the real
+           PostgreSQL so both SKIP LOCKED proofs run rather than skip...
+           345 passed, 2 skipped in 77.94s (0:01:17)
+[16:30:04] agent suite, host-side...
+           141 passed, 3 skipped in 30.17s
+[16:30:35] the chaos test -- the no-duplicate-accepted-result proof...
+           RESULT: PASS â€” the run executed under two attempts (at-least-once execution),
+[16:30:38] the contention campaign...
+           REFUSED BY ITS OWN GATE: uptime 5.95 h is above the 3.0 h ceiling - a long session leaves cached and fragmented memory that moves timings without showing up as a running process; reboot first
+           That guard (§18 2026-08-30k) exists so a timing is never
+           published from a machine that is not fit to measure on, and
+           it is not being disabled to satisfy a checklist. The property
+           this change could have broken is not a timing: it is whether
+           two claimers can take one run. That is proven above by the
+           chaos test, and by two PostgreSQL tests that need no clean
+           machine -- test_skip_locked_prevents_double_assignment and
+           test_concurrent_claimers_spread_across_the_queue (six
+           claimers, six distinct runs, zero doubles).
+[16:30:39] green: {'control-plane': True, 'agent': True, 'chaos': True, 'contention': True}
+
+==============================================================================
+  LIMBS
+==============================================================================
+  HELD    1. BEFORE the fix, on this stack, a one-core machine is offered NOTHING with four runs it cannot take ahead of it
+  HELD    2. AFTER the fix, the same machine on the same queue is offered the run it can take
+  HELD    3. how many unclaimable runs are ahead of it does not matter (measured at 4, 12 and 40)
+  HELD    4. among the runs it CAN take, the oldest is still the one it takes
+  HELD    5. the runs it cannot take are still waiting afterwards -- none were swept away
+  HELD    6. when their machine comes back, it is offered its own work
+  HELD    7. a real agent picks the freed run up and runs it to SUCCEEDED
+  HELD    8. the cost of walking a long queue is measured, not assumed
+  HELD    9. a run aimed at an absent machine WAITS and says what it is waiting for
+  HELD    10. both suites and the chaos test are green on this tree, and the contention campaign's own answer is recorded
+
+  10 of 10 held
+  finished 2026-09-05T16:30:39+00:00

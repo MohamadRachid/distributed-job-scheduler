@@ -1,0 +1,84 @@
+name: Security audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Mondays 06:00 UTC — catches a CVE disclosed against an already-pinned
+    # package with no commit to trigger on.
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {}
+
+concurrency:
+  group: security-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    name: pip-audit (${{ matrix.dir }}/${{ matrix.file }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # The dependency set each piece of software ACTUALLY RUNS WITH, which is
+        # not the same file for the two (2026-09-07, audit finding 7 and its
+        # minor): the control-plane image installs requirements-dev.txt (see
+        # control-plane/Dockerfile — the same image serves the API and runs the
+        # suite), so that is the file audited; a worker installs agent/requirements.txt.
+        include:
+          - dir: control-plane
+            file: requirements-dev.txt
+          - dir: agent
+            file: requirements.txt
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install pip-audit
+        run: pip install pip-audit==2.7.3
+
+      # -r reads the pinned file's metadata against the OSV/PyPI advisory
+      # databases; it does not need the packages installed to do this. A nested
+      # `-r requirements.txt` inside the dev file is followed.
+      #
+      # No `continue-on-error` (2026-09-07). It used to be here, which made a
+      # known vulnerability in a pinned package produce the same green tick as a
+      # clean scan — a check that cannot fail proves nothing. A finding now fails
+      # the workflow, and the fix is to move the pin (or, when no fixed release
+      # exists, to name the advisory with --ignore-vuln and say why in this file).
+      - name: Audit ${{ matrix.dir }}/${{ matrix.file }}
+        run: pip-audit -r ${{ matrix.dir }}/${{ matrix.file }}
+
+  npm-audit:
+    name: npm audit (web)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # `npm ci`, not install, per the same rule as web-build in ci.yml — the
+      # audit must be against exactly what the committed lockfile pins.
+      - name: Install
+        working-directory: web
+        run: npm ci
+
+      # Fails on a high or critical advisory (2026-09-07: `continue-on-error`
+      # removed here for the same reason as above).
+      - name: Audit
+        working-directory: web
+        run: npm audit --audit-level=high

@@ -1,0 +1,70 @@
+================================================================================
+  RE-RUN of the chaos test, against sealed-by-default
+  captured 2026-09-06
+================================================================================
+
+WHY THIS EXISTS. scripts/chaos_test.py is the project's centrepiece proof -- the
+no-duplicate-accepted-result guarantee, run against the REAL handlers rather than a
+re-implementation. It was re-run today for two reasons, and the first is not about
+sealing at all.
+
+  1. IT WAS BROKEN, AND HAD BEEN SINCE 2026-09-05. The call to the real `create_job`
+     had not been updated when that handler gained a `BackgroundTasks` parameter with
+     the checkpoint advisor. The session was landing in that slot and the session
+     parameter was left as its Depends sentinel, so the script stopped at step 1. That
+     is the price of calling the real handler -- which is also the reason to keep
+     calling it -- and it was found today by checking this change against it.
+
+  2. A SEEDED NODE NOW SAYS WHICH AGENT VERSION IT IS. A sealed job is invisible to a
+     machine that reads as too old, and a node row with no version reads as too old
+     because the guard fails closed. Without this the test would have stopped at step
+     2 for a reason that has nothing to do with what it proves.
+
+Both fixes are in the script, dated, with the reason beside them. Nothing about what
+the test ASSERTS changed.
+
+--------------------------------------------------------------------------------
+The run, as it printed:
+--------------------------------------------------------------------------------
+
+ Container fyp-postgres-1 Running 
+ Container fyp-postgres-1 Waiting 
+ Container fyp-postgres-1 Healthy 
+ Container fyp-control-plane-run-6afb0298aa2b Creating 
+ Container fyp-control-plane-run-6afb0298aa2b Created 
+Chaos test — DB=postgresql+asyncpg://fyp:fyp@postgres:5432/fyp
+lease_ttl=60s (we advance the reaper's clock past it to force a deterministic expiry)
+
+Seeded node A (4bb5c464) and node B (1ab74939); pool is clean.
+
+1. Submit a job (1 run, any eligible node).
+   [OK] job 52abb0ed -> run 3fafda34 (PENDING)
+
+2. Node A heartbeats and claims the run (pull-time assignment).
+   [OK] node A claimed run 3fafda34 at attempt=1 (ASSIGNED, lease started)
+   [OK] node A reported RUNNING at attempt=1
+
+3. Node A goes SILENT (stops heart-beating). Its lease is no longer renewed.
+   The reaper sweeps at a time past the lease (now + 70s).
+LOST run=3fafda34-4a5c-4d20-aac1-2cb2a7b1d924 node=4bb5c464-f3f4-4312-b575-03a0ed9fd62f attempt=1 retries_left=0 -> requeued
+   [OK] reaper marked run 3fafda34 LOST (dead node A, attempt 1) and REQUEUED it
+   [OK] reaper audit record: {'run_id': '3fafda34-4a5c-4d20-aac1-2cb2a7b1d924', 'node_id': '4bb5c464-f3f4-4312-b575-03a0ed9fd62f', 'attempt': 1, 'decision': 'requeued'}
+   [OK] run is PENDING again, node cleared, attempt STILL 1 (the reaper never bumps it)
+
+4. Node B heartbeats and claims the requeued run.
+   [OK] node B claimed run 3fafda34; attempt bumped 1 -> 2 (the fence is now set)
+   [OK] node B reported RUNNING at attempt=2
+
+5. Zombie node A wakes up and posts its OLD result (attempt 1).
+   [OK] node A's attempt-1 result was REJECTED with 409 (the run has moved on: owner=B, attempt=2). A is told to abort. NOT accepted.
+
+6. Node B finishes the run.
+   [OK] node B's attempt-2 result was ACCEPTED -> run SUCCEEDED
+
+7. Final state — exactly one accepted result, and it is node B's:
+   [OK] run 3fafda34: SUCCEEDED, node=B (1ab74939), attempt=2, exit=0
+   [OK] job 52abb0ed: SUCCEEDED
+
+RESULT: PASS — the run executed under two attempts (at-least-once execution),
+        but exactly ONE result was accepted (at-most-once accepted result).
+        Recovery works; no duplicate accepted. [FR-7, FR-8, NFR-3, ISO 25010 §4.2.5]

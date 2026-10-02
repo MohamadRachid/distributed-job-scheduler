@@ -1,0 +1,16 @@
+# Agent TEST dependencies. Runtime deps are in requirements.txt and stay minimal
+# on purpose — an agent installs on a lab machine, so every dependency there is a
+# thing that can fail on someone else's laptop.
+-r requirements.txt
+
+pytest==9.1.1  # moved 2026-09-07 with the control plane's pin, same advisory
+
+# Test-only. The encrypted-transport tests (2026-08-22) stand up a real HTTPS
+# server with a real certificate rather than mocking TLS, and this is what makes
+# the throwaway certificate authority they verify against.
+#
+# The AGENT does not need this at runtime and deliberately does not have it: the
+# agent is a courier for sealed bytes it cannot open, and adding a cryptography
+# library to it would blur that. Pinned to the same version as the control plane
+# so the two cannot drift apart.
+cryptography==50.0.1

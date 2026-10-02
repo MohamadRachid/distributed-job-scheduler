@@ -1,0 +1,14 @@
+# Normalise line endings: LF in the repo for all text, so the Linux containers
+# (and the agent on any OS) get consistent files regardless of host.
+* text=auto eol=lf
+
+# Binary planning/reference artifacts — never normalise or diff.
+*.pdf binary
+*.png binary
+*.jpg binary
+*.docx binary
+
+# Raw network recordings (2026-08-22). These are captured BYTES: the whole point of
+# before_plain_http.bin and after_https.bin is what was literally on the wire, and
+# line-ending normalisation would rewrite that. Never normalise, never diff.
+*.bin binary

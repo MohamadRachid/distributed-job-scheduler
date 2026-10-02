@@ -1,0 +1,25 @@
+{
+  "name": "fyp-web",
+  "private": true,
+  "version": "0.4.0",
+  "type": "module",
+  "description": "Demo surface — login, submit a job, watch logs stream live, compare results + download outputs (W6). Kept thin.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
+    "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^26.1.0",
+    "vite": "^6.0.7",
+    "vitest": "^3.2.7"
+  }
+}

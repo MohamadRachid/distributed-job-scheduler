@@ -1,0 +1,764 @@
+/* ============================================================================
+   Mission-control theme (W4 "make it feel alive" pass).
+   The UI is still the demo surface, not the contribution —
+   everything here is CSS + tiny presentational components. No new libraries.
+
+   Design language: a datacenter operations console. Dark navy field with a
+   faint blueprint grid, cyan/green signal colors, monospaced data, pinging
+   beacons on live nodes, breathing bars, phosphor-terminal logs.
+   ========================================================================== */
+
+:root {
+  --bg: #070b14;
+  --panel: #0c1322;
+  --panel-2: #0a101c;
+  --line: #1b2740;
+  --line-bright: #2b3f66;
+  --text: #d7e2f4;
+  --muted: #7183a1;
+  --cyan: #22d3ee;
+  --cyan-dim: #0e7490;
+  --green: #34d399;
+  --amber: #f5b944;
+  --red: #fb7185;
+  --font-display: 'Chakra Petch', 'Trebuchet MS', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', Menlo, monospace;
+  /* One height for every field, so a checkbox sitting beside an input lines up
+     with it by sharing this number rather than by a guess that drifts. */
+  --field-h: 2.15rem;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Atmosphere: blueprint grid + two soft aurora glows, fixed behind everything. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(55rem 30rem at 15% -5%, rgba(34, 211, 238, 0.08), transparent 60%),
+    radial-gradient(45rem 28rem at 95% 110%, rgba(52, 211, 153, 0.06), transparent 60%),
+    linear-gradient(rgba(43, 63, 102, 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(43, 63, 102, 0.14) 1px, transparent 1px);
+  background-size: auto, auto, 32px 32px, 32px 32px;
+}
+
+.app { max-width: 82rem; margin: 0 auto; padding: 1.8rem 1.75rem 3rem; }
+
+/* --- Header + live system strip ----------------------------------------- */
+
+header h1 {
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 0;
+}
+header h1::after { content: '_'; color: var(--cyan); animation: blink 1.1s steps(1) infinite; }
+/* Solid ink (2026-09-07). This was a gradient swept across the letterforms with
+   background-clip: text. It read as decoration rather than meaning, and it cost the
+   title its real colour: clipped text has to be transparent, so the words had no
+   value of their own and inherited nothing on a browser that dropped the clip. The
+   identity the sweep was carrying is already carried better by the blinking cursor
+   after the title. Emphasis now comes from weight and tracking, which is what type
+   is for. */
+.sheen {
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+/* Twinkling depth layer — two star fields blinking out of phase. */
+.stars { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+.stars::before, .stars::after {
+  content: '';
+  position: absolute;
+  width: 2px; height: 2px; border-radius: 999px;
+  background: transparent;
+}
+.stars::before {
+  box-shadow:
+    8vw 12vh 0 rgba(34, 211, 238, 0.5), 22vw 78vh 0 rgba(215, 226, 244, 0.3),
+    35vw 30vh 0 rgba(52, 211, 153, 0.4), 48vw 88vh 0 rgba(34, 211, 238, 0.35),
+    61vw 18vh 0 rgba(215, 226, 244, 0.35), 74vw 64vh 0 rgba(34, 211, 238, 0.45),
+    88vw 40vh 0 rgba(52, 211, 153, 0.3), 94vw 84vh 0 rgba(215, 226, 244, 0.4);
+  animation: twinkle 4.5s ease-in-out infinite alternate;
+}
+.stars::after {
+  box-shadow:
+    14vw 52vh 0 rgba(215, 226, 244, 0.35), 29vw 8vh 0 rgba(34, 211, 238, 0.4),
+    42vw 70vh 0 rgba(52, 211, 153, 0.35), 56vw 42vh 0 rgba(215, 226, 244, 0.3),
+    69vw 90vh 0 rgba(34, 211, 238, 0.35), 81vw 14vh 0 rgba(52, 211, 153, 0.4),
+    91vw 58vh 0 rgba(34, 211, 238, 0.3);
+  animation: twinkle 3.6s ease-in-out 1.2s infinite alternate;
+}
+header .sub { color: var(--muted); margin: 0.3rem 0 0.9rem; font-size: 0.9rem; }
+
+.livestrip {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(34, 211, 238, 0.05), transparent 70%), var(--panel-2);
+  padding: 0.45rem 0.8rem;
+  margin-bottom: 1.25rem;
+}
+.livestrip .sys { color: var(--green); font-weight: 600; letter-spacing: 0.08em; display: inline-flex; align-items: center; gap: 0.4rem; }
+.sysdot {
+  width: 0.55rem; height: 0.55rem; border-radius: 999px; background: var(--green);
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.9);
+  animation: breathe 2.2s ease-in-out infinite;
+}
+.livestrip .sep { color: var(--line-bright); }
+.livestrip .clock { color: var(--text); }
+
+/* --- Panels -------------------------------------------------------------- */
+
+/* Below the full-width submit panel: runs + results, side by side. The right column
+   is the wider one and the ratio was widened again on 2026-09-07: the runs table is
+   five narrow monospaced columns, while Results lays out one card per run so they can
+   be read against each other, which is the whole of FR-10. At 1.25 the cards wrapped
+   to two per line; at 1.6 three fit, and the comparison the requirement promises is
+   actually on screen. */
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 1.1rem; align-items: start; }
+.grid > * { min-width: 0; }
+@media (max-width: 960px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* If a narrow window can't fit the pool's columns, scroll — never clip. */
+.tablewrap { overflow-x: auto; }
+
+.panel {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 40%), var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.2rem 1.4rem;
+  margin-bottom: 1.1rem;
+  box-shadow: 0 18px 40px -28px rgba(0, 0, 0, 0.9);
+  animation: rise 0.45s ease both;
+  transition: border-color 0.25s ease, transform 0.25s ease;
+}
+.panel:hover { border-color: var(--line-bright); transform: translateY(-1px); }
+
+/* A faint scanner beam sweeps down the node pool every few seconds. */
+.scan { position: relative; overflow: hidden; }
+.scan::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: -30%;
+  height: 3.5rem;
+  background: linear-gradient(180deg, transparent, rgba(34, 211, 238, 0.06), transparent);
+  animation: sweep 6s ease-in-out infinite;
+  pointer-events: none;
+}
+.panel h2 {
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.panel h2::before {
+  content: '';
+  width: 0.7rem; height: 0.7rem;
+  border-radius: 999px;
+  background: conic-gradient(from 0deg, var(--cyan), rgba(34, 211, 238, 0.05) 65%, transparent 75%);
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.5);
+  animation: radar 2.6s linear infinite;
+}
+
+/* --- Tables --------------------------------------------------------------- */
+
+table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+th, td { text-align: left; padding: 0.7rem 0.8rem; border-bottom: 1px solid var(--line); line-height: 1.5; }
+th {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+td { font-family: var(--font-mono); font-size: 0.8rem; }
+
+/* --- Status pills + beacons ------------------------------------------------ */
+
+.pill {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.1rem 0.55rem; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600;
+  letter-spacing: 0.05em;
+  background: rgba(113, 131, 161, 0.12); color: var(--muted);
+  border: 1px solid transparent;
+  animation: pop 0.35s ease;
+}
+.pill.on { background: rgba(52, 211, 153, 0.1); color: var(--green); border-color: rgba(52, 211, 153, 0.35); }
+.pill.off { background: rgba(251, 113, 133, 0.08); color: var(--red); border-color: rgba(251, 113, 133, 0.25); }
+.pill.running {
+  background: rgba(34, 211, 238, 0.1); color: var(--cyan); border-color: rgba(34, 211, 238, 0.35);
+  animation: glowpulse 1.6s ease-in-out infinite;
+}
+.pill.assigned { background: rgba(34, 211, 238, 0.06); color: var(--cyan-dim); border-color: rgba(34, 211, 238, 0.2); }
+.pill.succeeded { background: rgba(52, 211, 153, 0.12); color: var(--green); border-color: rgba(52, 211, 153, 0.4); }
+.pill.failed, .pill.lost { background: rgba(251, 113, 133, 0.12); color: var(--red); border-color: rgba(251, 113, 133, 0.4); }
+
+/* Radar ping on live nodes. */
+.beacon { position: relative; width: 0.5rem; height: 0.5rem; border-radius: 999px; background: var(--green); flex: none; }
+.beacon::after {
+  content: '';
+  position: absolute; inset: 0; border-radius: 999px;
+  background: var(--green);
+  animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* --- Node pool ------------------------------------------------------------- */
+
+.pool td { vertical-align: top; }
+/* Column sizing: names never wrap; long CPU/GPU names wrap once, not five times.
+   Scoped to .poolrow so the expanded spec sheet (also a first cell) still wraps. */
+.poolrow td:first-child > div:first-child { white-space: nowrap; }
+.pool th:nth-child(2), .pool td:nth-child(2) { min-width: 7.5rem; }
+.pool th:nth-child(3), .pool td:nth-child(3) { min-width: 14rem; }
+.pool th:nth-child(4), .pool td:nth-child(4) { min-width: 9rem; }
+.pool th:nth-child(5), .pool td:nth-child(5) { min-width: 5.5rem; }
+.poolrow { cursor: pointer; animation: rise 0.4s ease both; }
+.poolrow:hover td { background: rgba(34, 211, 238, 0.04); }
+.poolrow td:first-child { font-family: var(--font-body); font-weight: 600; font-size: 0.87rem; }
+.sub { color: var(--muted); font-size: 0.7rem; margin-top: 0.3rem; font-family: var(--font-mono); font-weight: 400; line-height: 1.4; }
+.gputag { color: var(--cyan); }
+
+.loadcell { min-width: 11rem; }
+.usage { display: flex; align-items: center; gap: 0.4rem; margin: 0.22rem 0; }
+.usage-label { font-size: 0.62rem; color: var(--muted); width: 1.9rem; letter-spacing: 0.06em; }
+.usage-pct { font-size: 0.68rem; color: var(--text); width: 2.3rem; text-align: right; font-variant-numeric: tabular-nums; animation: numflash 0.7s ease; }
+
+/* Live CPU sparkline (client-side history of the 3s polls). */
+.sparkrow { margin-top: 0.2rem; text-align: right; }
+.spark polyline { stroke: var(--cyan); stroke-width: 1.4; opacity: 0.85; }
+.spark circle { fill: var(--green); filter: drop-shadow(0 0 3px rgba(52, 211, 153, 0.9)); }
+
+/* Equalizer bars while a node executes runs. */
+.eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 0.6rem; margin-right: 0.3rem; }
+.eq i { width: 2px; height: 100%; background: var(--cyan); transform-origin: bottom; animation: eqb 0.9s ease-in-out infinite; }
+.eq i:nth-child(2) { animation-delay: 0.25s; background: var(--green); }
+.eq i:nth-child(3) { animation-delay: 0.5s; }
+.bar { flex: 1; height: 0.45rem; background: rgba(27, 39, 64, 0.9); border-radius: 999px; overflow: hidden; }
+.bar .fill {
+  display: block; height: 100%; border-radius: 999px;
+  background:
+    repeating-linear-gradient(-55deg, rgba(255, 255, 255, 0.18) 0 4px, transparent 4px 8px),
+    var(--cyan);
+  background-size: 200% 100%, auto;
+  box-shadow: 0 0 8px rgba(34, 211, 238, 0.5);
+  transition: width 0.7s ease;
+  animation: flow 1.4s linear infinite;
+}
+.bar .fill.warm { background-color: var(--amber); box-shadow: 0 0 8px rgba(245, 185, 68, 0.5); }
+.bar .fill.hot { background-color: var(--red); box-shadow: 0 0 8px rgba(251, 113, 133, 0.6); }
+
+.detailrow td { background: var(--panel-2); }
+/* Full spec sheet: label-over-value blocks — long values wrap inside their own
+   block instead of colliding with the neighbouring column. */
+.specsheet {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 0.7rem 1.4rem;
+  padding: 0.5rem 0.3rem;
+  animation: rise 0.3s ease both;
+  white-space: normal; /* the pool's nowrap rules must never leak in here */
+}
+.specrow { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.specrow span:first-child {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+.specrow span:last-child { font-size: 0.8rem; color: var(--text); overflow-wrap: anywhere; line-height: 1.4; }
+
+.muted { color: var(--muted); }
+.err { color: var(--red); font-size: 0.85rem; font-family: var(--font-mono); }
+
+/* --- Form ------------------------------------------------------------------ */
+
+.form { display: flex; flex-direction: column; gap: 0.6rem; }
+.form label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.72rem; color: var(--muted); font-family: var(--font-mono); letter-spacing: 0.04em; }
+/* The shared height belongs to the text-like fields only. A checkbox given a
+   34px min-height is a 34px checkbox, and a file input has its own control. */
+.form input:not([type='checkbox']):not([type='file']), .form select {
+  min-height: var(--field-h);
+}
+/* textarea belongs in this list. Left out, it kept the browser's own white box
+   with black text in the middle of a dark console — the one control on the page
+   that did not look like the page (2026-09-07). */
+.form input, .form select, .form textarea {
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  color: var(--text);
+  background: var(--panel-2);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.form input:focus, .form select:focus, .form textarea:focus {
+  outline: none;
+  border-color: var(--cyan-dim);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.12);
+}
+/* A pasted script is code: read it in the monospace the rest of the data uses, on
+   its own lines. Vertical resize only — dragging it wider than its panel is how a
+   textarea escapes the layout everything else obeys. */
+.form textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+.form textarea::placeholder { color: var(--muted); }
+
+/* --- form rows (fixed 2026-09-06) -------------------------------------------
+   Three faults in one row: the fields ran off the right edge of the panel, the
+   checkbox took an equal quarter of the width and wrapped its own two words onto
+   two lines, and a label long enough to wrap pushed its input a line below its
+   neighbours so nothing sat on a common baseline.
+
+   The overflow is the one worth naming, because it is not obvious. A flex item
+   will not shrink below its content's minimum width, and an <input>'s minimum is
+   its default size of about twenty characters -- so four fields of roughly 180px
+   plus their gaps could not fit and simply overflowed. `min-width: 0` is what
+   allows them to shrink at all; `flex-wrap` is what stops them shrinking into
+   uselessness, by moving a field onto a second line instead.
+
+   `align-items: end` is what puts the inputs on one line whatever their labels do:
+   the boxes align to each other, not to the top of a label that may be one line or
+   two. */
+.form .row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; }
+.form .row label { flex: 1 1 9rem; min-width: 0; }
+.form .row input, .form .row select { width: 100%; min-width: 0; }
+.form .check { flex-direction: row; align-items: center; gap: 0.4rem; accent-color: var(--cyan); }
+/* A checkbox is not a field. It takes the width of its own words rather than an
+   equal share of the row, and it never wraps them. */
+.form .row .check { flex: 0 0 auto; min-height: var(--field-h); white-space: nowrap; }
+.form .row .check input { width: auto; }
+.targets { border: 1px solid var(--line); border-radius: 8px; padding: 0.55rem 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.targets legend { font-size: 0.68rem; color: var(--muted); font-family: var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; padding: 0 0.3rem; }
+.form button {
+  padding: 0.55rem 0.75rem; border: none; border-radius: 6px; cursor: pointer;
+  background: var(--cyan); color: #04222b;
+  font-family: var(--font-display); font-weight: 700; font-size: 0.9rem;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  transition: box-shadow 0.2s ease, transform 0.1s ease;
+  position: relative; overflow: hidden;
+}
+/* A light streak crosses the submit button every few seconds. */
+.form button:not(.minor)::after {
+  content: '';
+  position: absolute; top: 0; left: -60%;
+  width: 40%; height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  transform: skewX(-20deg);
+  animation: streak 3.4s ease-in-out infinite;
+}
+.form button:hover { box-shadow: 0 0 18px rgba(34, 211, 238, 0.45); }
+.form button:active { transform: translateY(1px); }
+.form button:disabled { opacity: 0.55; cursor: default; box-shadow: none; }
+.form .minor {
+  align-self: flex-start;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--line-bright);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-mono); font-weight: 500; font-size: 0.7rem;
+  letter-spacing: 0.04em; text-transform: none;
+}
+.form .minor:hover { color: var(--cyan); border-color: var(--cyan-dim); box-shadow: none; }
+
+/* --- Run tabs + logs --------------------------------------------------------- */
+
+.runtabs { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
+.tab {
+  border: 1px solid var(--line); background: var(--panel-2); color: var(--muted);
+  border-radius: 6px; padding: 0.25rem 0.65rem; cursor: pointer;
+  font-family: var(--font-mono); font-size: 0.75rem;
+}
+.tab.active { background: rgba(34, 211, 238, 0.12); color: var(--cyan); border-color: var(--cyan-dim); }
+
+.logmeta { font-size: 0.78rem; margin-bottom: 0.45rem; font-family: var(--font-mono); }
+.logbox {
+  position: relative;
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.015) 0 1px, transparent 1px 3px),
+    #04070d;
+  color: #a5e8c8;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.8rem 0.95rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  max-height: 22rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  margin: 0;
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.55);
+}
+.cursor {
+  display: inline-block;
+  width: 0.55em; height: 1em;
+  background: var(--green);
+  vertical-align: text-bottom;
+  margin-left: 2px;
+  animation: blink 1s steps(1) infinite;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.8);
+}
+.logbox .ln { animation: lnrise 0.35s ease both; }
+
+/* --- Keyframes ---------------------------------------------------------------- */
+
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes ping { 75%, 100% { transform: scale(2.6); opacity: 0; } }
+@keyframes breathe { 50% { opacity: 0.45; } }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes lnrise { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
+@keyframes flow { to { background-position: -16px 0, 0 0; } }
+@keyframes glowpulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.35); }
+  50% { box-shadow: 0 0 10px 2px rgba(34, 211, 238, 0.25); }
+}
+@keyframes twinkle { from { opacity: 0.25; } to { opacity: 1; } }
+@keyframes sweep { 0% { top: -30%; } 60%, 100% { top: 115%; } }
+@keyframes radar { to { transform: rotate(360deg); } }
+@keyframes eqb { 0%, 100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
+@keyframes numflash { 0% { color: #ffffff; text-shadow: 0 0 8px rgba(34, 211, 238, 0.9); } 100% { color: var(--text); } }
+@keyframes streak { 0%, 55% { left: -60%; } 90%, 100% { left: 130%; } }
+@keyframes pop { from { transform: scale(0.7); opacity: 0.4; } to { transform: scale(1); opacity: 1; } }
+
+/* --- W5b diagnostics (reasons, progress, samples, node events) ----------- */
+
+/* Why a dead run died — a small badge next to the status pill. */
+.reason {
+  display: inline-block; margin-left: 0.45rem; padding: 0.05rem 0.4rem;
+  font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.03em;
+  color: var(--amber); border: 1px solid rgba(245, 185, 68, 0.4);
+  background: rgba(245, 185, 68, 0.08); border-radius: 3px; vertical-align: middle;
+}
+/* W5c escalation badge — info tone (cyan), distinct from a failure reason (amber). */
+.reason.learned {
+  color: var(--cyan); border-color: rgba(34, 211, 238, 0.4);
+  background: rgba(34, 211, 238, 0.08);
+}
+/* 2026-09-06: waiting for a machine that is not here. Muted rather than amber --
+   nothing is wrong, and a warning colour would say something is. */
+.reason.waiting {
+  color: var(--muted); border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(148, 163, 184, 0.08);
+}
+.runrow.clickable { cursor: pointer; }
+.runrow.clickable:hover td { background: rgba(34, 211, 238, 0.04); }
+.reasondetail { margin: 0.2rem 0 0.6rem; color: var(--text); font-size: 0.85rem; }
+
+/* Live progress bar (##PROGRESS contract). */
+.prog { display: flex; align-items: center; gap: 0.5rem; }
+.progbar {
+  flex: 1; min-width: 4rem; height: 0.5rem; border-radius: 999px;
+  background: rgba(34, 211, 238, 0.1); border: 1px solid var(--line); overflow: hidden;
+}
+.progfill {
+  display: block; height: 100%;
+  background: linear-gradient(90deg, var(--cyan-dim), var(--cyan));
+  transition: width 0.6s ease;
+}
+.progpct { font-family: var(--font-mono); font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+
+/* The last resource picture — a few samples under an opened failed run. */
+.samples { margin: 0.2rem 0 0.3rem; width: auto; }
+.samples th, .samples td {
+  padding: 0.3rem 0.7rem; font-family: var(--font-mono); font-size: 0.75rem;
+}
+.samples th { color: var(--muted); font-weight: 500; }
+
+/* Node event history. */
+.eventswrap { grid-column: 1 / -1; margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px solid var(--line); }
+.events { list-style: none; margin: 0.3rem 0 0; padding: 0; }
+.events li { padding: 0.2rem 0; font-size: 0.82rem; }
+.ev {
+  font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.03em;
+  padding: 0.05rem 0.4rem; border-radius: 3px; color: var(--cyan);
+  border: 1px solid rgba(34, 211, 238, 0.3); background: rgba(34, 211, 238, 0.07);
+}
+.ev.network_partition, .ev.slept, .ev.agent_crash { color: var(--amber); border-color: rgba(245, 185, 68, 0.4); background: rgba(245, 185, 68, 0.08); }
+.ev.power_loss_or_crash { color: var(--red); border-color: rgba(251, 113, 133, 0.4); background: rgba(251, 113, 133, 0.08); }
+.ev.clean_shutdown, .ev.goodbye { color: var(--green); border-color: rgba(52, 211, 153, 0.35); background: rgba(52, 211, 153, 0.08); }
+
+/* "likely …" hint under an offline node. */
+.sub.likely { color: var(--amber); }
+
+/* Respect users (and projectors) that prefer stillness. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* --- focus, selection and scrollbars (2026-09-07) --------------------------
+   Three things the console never finished saying in its own voice. The form
+   fields had a cyan focus ring from W1; nothing else did, so tabbing through the
+   page fell back to the browser's ring on buttons and showed nothing at all on
+   the two table rows that open a detail panel. :focus-visible rather than :focus,
+   so a mouse click does not leave a ring behind. Not scoped to .app: the login
+   screen renders outside it, and its sign-in button needs the ring too. */
+:is(button, summary, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+/* If a table row receives focus, paint the ring on its cells. */
+tr:focus-visible > td { box-shadow: inset 0 0 0 2px var(--cyan); }
+
+/* Dragging over a log line or a node name showed the browser's default blue,
+   the one colour on the page that belongs to no palette. */
+::selection { background: rgba(34, 211, 238, 0.28); color: var(--text); }
+
+/* The log panel is the surface people watch during the demo, and it scrolls. A
+   default grey scrollbar on a phosphor terminal is the same mistake as the white
+   file button: a control that did not get the theme. */
+* { scrollbar-width: thin; scrollbar-color: var(--line-bright) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--line-bright);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--cyan-dim); background-clip: content-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* ============================================================================
+   W6 — login gate, sign-out, unified results view + downloadable artifacts.
+   Same idioms (.panel, .pill, .muted, .reason). Demo surface only.
+   ========================================================================== */
+
+/* Login screen. */
+.login-page { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+.login-card { max-width: 26rem; width: 100%; text-align: center; }
+.login-card h1 { font-family: var(--font-display); font-size: 1.4rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.login-card .form { margin-top: 1rem; text-align: left; }
+
+/* Sign-out button in the header. */
+header { position: relative; }
+.logout {
+  position: absolute; top: 0; right: 0;
+  font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.04em;
+  padding: 0.3rem 0.7rem; border-radius: 4px; cursor: pointer;
+  color: var(--muted); background: var(--panel-2); border: 1px solid var(--line);
+}
+.logout:hover { color: var(--text); border-color: var(--line-bright); }
+
+/* Results view. */
+.results-pick { display: flex; flex-direction: column; gap: 0.3rem; max-width: 30rem; }
+.results-pick select {
+  padding: 0.45rem 0.5rem; border-radius: 4px;
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+  font-family: var(--font-body);
+}
+
+/* Runs side by side — one card per run. */
+.runcards { display: flex; flex-wrap: wrap; gap: 0.9rem; margin-top: 1rem; }
+.runcard {
+  flex: 1 1 15rem; min-width: 14rem; max-width: 22rem;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 0.8rem 0.9rem;
+}
+.runcard-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; }
+.runcard-title { font-family: var(--font-mono); font-size: 0.85rem; color: var(--cyan); letter-spacing: 0.03em; }
+.runcard-body { display: flex; flex-direction: column; gap: 0.35rem; }
+.kv { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; font-size: 0.86rem; }
+.kv.col { flex-direction: column; align-items: flex-start; gap: 0.15rem; }
+.kv .reasondetail { font-size: 0.76rem; }
+.runcard-files { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--line); }
+.artifacts { list-style: none; margin: 0.35rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.artifacts li { display: flex; align-items: baseline; gap: 0.4rem; }
+.artifacts .minor {
+  font-family: var(--font-mono); font-size: 0.78rem; cursor: pointer;
+  padding: 0.15rem 0.5rem; border-radius: 4px;
+  color: var(--cyan); background: rgba(34, 211, 238, 0.07); border: 1px solid rgba(34, 211, 238, 0.3);
+}
+.artifacts .minor:hover { background: rgba(34, 211, 238, 0.14); }
+
+/* --- W6b: private inputs (sealed data) ------------------------------------
+   Amber is used deliberately for every private/trust affordance: the page's
+   only "handle with care" colour, so a sealed job is recognisable at a glance
+   without reading a word. */
+
+/* The trust switch in the node pool — an admin's judgment about a machine. */
+.trustbtn {
+  font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.04em;
+  padding: 0.22rem 0.55rem; border-radius: 4px; cursor: pointer; white-space: nowrap;
+  color: var(--muted); background: var(--panel-2); border: 1px solid var(--line);
+}
+.trustbtn:hover { color: var(--text); border-color: var(--line-bright); }
+.trustbtn.on {
+  color: var(--amber); background: rgba(245, 185, 68, 0.09);
+  border-color: rgba(245, 185, 68, 0.42);
+}
+.trustbtn:disabled { opacity: 0.5; cursor: wait; }
+
+/* The private block on the submit form. */
+fieldset.private { border-color: rgba(245, 185, 68, 0.32); }
+fieldset.private legend { color: var(--amber); }
+fieldset.private input[type='file'] {
+  font-family: var(--font-mono); font-size: 0.78rem;
+  color: var(--text); background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 4px; padding: 0.35rem;
+}
+/* The locked honesty note. Readable, not fine print — it says what sealing does
+   NOT protect against, and that sentence is the point. */
+/* Carried by colour and wording, not by a stripe (2026-09-07). A coloured bar down
+   the left of a callout is decoration standing in for meaning: it says "notice"
+   without saying what kind. A desaturated amber says the same thing in the ink
+   itself, costs no chrome, and does not stack into a ladder of bars when two of
+   these sit together. The sentence still states what it is, so the colour is a
+   second signal and never the only one. */
+.privacynote {
+  margin: 0.5rem 0 0; font-size: 0.78rem; line-height: 1.55;
+  color: #c2a469;
+}
+
+/* --- folded hints (2026-09-06) ---------------------------------------------
+   A hint above a field is one short line; the paragraph that used to sit there is
+   behind this toggle instead. Deliberately quiet: a summary that looks like a button
+   competes with the field it explains, and the point of the change is that the eye
+   goes to the input. Native <details>, so it costs no JavaScript and works with a
+   keyboard and a screen reader without anything being wired up. */
+details.more { margin: 0; }
+details.more > summary {
+  cursor: pointer; width: fit-content; list-style: none;
+  font-size: 0.68rem; font-family: var(--font-mono); letter-spacing: 0.08em;
+  color: var(--muted); opacity: 0.7; padding: 0.1rem 0;
+}
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::before { content: '+ '; }
+details.more[open] > summary::before { content: '− '; }
+details.more > summary:hover { opacity: 1; color: var(--cyan); }
+/* Indented, not ruled (2026-09-07). The <details> disclosure already says this text
+   belongs to the summary above it; a bar down its left repeated that in paint. The
+   indent alone carries the nesting. */
+details.more > div {
+  margin-top: 0.35rem; font-size: 0.76rem; line-height: 1.55; color: var(--muted);
+  padding-left: 0.9rem;
+}
+/* Inside the privacy box the fold keeps the same ink as the note above it, so the
+   locked text reads the same whether it is open or shut. */
+fieldset.private details.more > div { color: #c2a469; }
+
+/* The sealed-job banner above a private job's runs, plus crypto-shred. */
+.privatebanner {
+  margin-top: 0.8rem; padding: 0.7rem 0.9rem; border-radius: 6px;
+  background: rgba(245, 185, 68, 0.06); border: 1px solid rgba(245, 185, 68, 0.28);
+}
+.privatebanner p { margin: 0; font-size: 0.82rem; line-height: 1.55; color: var(--text); }
+.shred { margin-top: 0.6rem; display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+.minor.danger {
+  font-family: var(--font-mono); font-size: 0.76rem; cursor: pointer;
+  padding: 0.2rem 0.55rem; border-radius: 4px;
+  color: var(--red); background: rgba(251, 113, 133, 0.08);
+  border: 1px solid rgba(251, 113, 133, 0.35);
+}
+.minor.danger:hover { background: rgba(251, 113, 133, 0.16); }
+.minor.danger:disabled { opacity: 0.5; cursor: wait; }
+
+/* The one place in the form's storage story that is allowed a warning colour
+   (2026-09-07). The quota BAR is deliberately neutral, because a quota you are
+   inside is not a problem. This is the other case: work has already been thrown
+   away, and the user needs to know before they wonder why a run vanished. */
+.quotastop {
+  margin: 0 0 0.9rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid rgba(251, 113, 133, 0.45);
+  border-radius: 6px;
+  background: rgba(251, 113, 133, 0.08);
+  color: var(--text);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+.quotastop b { color: var(--red); }
+
+/* --- storage quota bar (2026-09-04) ---------------------------------------
+   How much of the retained-storage cap this user has spent. Deliberately the same
+   visual language as the rest of the panel rather than a warning colour: a quota is
+   an ordinary fact about an account, and a red bar at 40% would say something the
+   number does not. It turns amber past three quarters, which is where a user can
+   still act before a run is refused. */
+.quotabar {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  margin: 6px 0;
+}
+.quotafill {
+  height: 100%;
+  background: linear-gradient(90deg, #4fc3f7, #7e57c2);
+  transition: width 0.4s ease;
+}
+/* Past three quarters the user can still act — release a finished job's storage —
+   before a run is refused, so this is the point at which the bar starts saying so. */
+.quotafill.high {
+  background: linear-gradient(90deg, #ffb74d, #ff7043);
+}
+
+/* The chosen dataset file, named where it was chosen (walk 1, rows 30 and 35). */
+.filechip { margin: 0.35rem 0; font-size: 0.92em; }
+.filechip .minor { margin-left: 0.4rem; }
+
+/* The browser's own "Choose File" button, which arrives grey-on-white and was the
+   last unthemed control on the page (2026-09-07). Both spellings: the standard
+   ::file-selector-button and the -webkit- prefix Chrome still needs. Styled as a
+   quiet secondary button, because picking a file is not the form's main action. */
+.form input[type='file'] { cursor: pointer; }
+.form input[type='file']::file-selector-button,
+.form input[type='file']::-webkit-file-upload-button {
+  margin-right: 0.7rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.form input[type='file']:hover::file-selector-button,
+.form input[type='file']:hover::-webkit-file-upload-button {
+  border-color: var(--cyan-dim);
+  background: var(--panel-2);
+}
+
+/* A waiting sentence under a status pill in the runs table (walk 1, rows 49, 66). */
+.sub.waiting { color: #e3c86a; white-space: normal; max-width: 28rem; }
+/* One quiet sentence under a card's file list (walk 1, row 63). */
+.muted.small { font-size: 0.82em; opacity: 0.8; }
+
+/* Native controls share the dashboard palette; disclosure buttons keep table semantics. */
+.minor, .admin table select { color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: .3rem .55rem; font: inherit; }
+.disclosure { background: none; color: inherit; border: 0; padding: .15rem 0; font: inherit; cursor: pointer; text-align: left; }

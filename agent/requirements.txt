@@ -1,0 +1,5 @@
+# Agent runtime deps. HTTP is stdlib (urllib). Docker SDK for container
+# lifecycle control; psutil for the machine identity + usage
+# sampling behind the dashboard (supervisor-requested).
+docker==7.1.0
+psutil==6.1.0

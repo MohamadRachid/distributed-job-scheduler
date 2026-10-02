@@ -1,0 +1,15 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "FYP Postgres",
+      "Group": "FYP",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "fyp",
+      "Username": "fyp",
+      "PassFile": "/pgpass",
+      "SSLMode": "prefer",
+      "Comment": "Distributed Training Platform DB - nodes, jobs, runs, run_logs, run_samples, node_events"
+    }
+  }
+}

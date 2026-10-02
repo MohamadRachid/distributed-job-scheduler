@@ -1,0 +1,183 @@
+# W1 skeleton: postgres + minio + control-plane.
+# `docker compose up --build` brings the three up; the control-plane container
+# applies Alembic migrations on startup, then serves the API on :8000.
+#
+# MinIO is started now (it's part of the locked stack, §7) but NOT wired into
+# any code path in W1 — artifact upload is W6. It is here so the compose file is
+# the one stable "bring up the world" command from day one.
+#
+# LOG ROTATION (raised by the supervisor, 2026-07-22; design locked 2026-07-24).
+# Docker's default json-file driver keeps container stdout FOREVER: a machine left
+# running for weeks fills its disk with logs nobody reads, and nothing warns you.
+# Every service below caps it at 3 files x 10 MB = 30 MB, applied per service and
+# not globally, so the limit travels with the repo instead of depending on how the
+# daemon on a given machine happens to be configured.
+#
+# This is only the SERVICE-log half of the answer. A job's own run logs are user
+# data, live in Postgres, and are never dropped — the design for tiering those to
+# MinIO after a retention window is written up for the progress report and built in
+# the hardening week. Deleting a log line would break our own "no log line silently
+# lost" guarantee, so nothing here does.
+#
+# One interaction to know about: harness.reaper_events() and E1's audit-line count
+# read the control plane's log via `docker compose logs`. 30 MB is far more than any
+# measurement window has produced (the whole 2026-07-30 window ran well inside one
+# file), but an experiment that ever needs more history must raise the cap for that
+# run and record it in the manifest, exactly as E2 does with LEASE_TTL_S.
+#
+# WHO CAN REACH WHAT (2026-09-07, audit finding 3). Every access control this
+# project has -- the login token, per-owner read scoping, the storage caps, the
+# brokered artefact reads -- lives in the control plane. PostgreSQL and MinIO have
+# none of it: whoever can open port 5432 with the database password can read
+# `job_keys.key_b64` and every sealed input's key with it, and whoever can open the
+# MinIO console can pull every stored object. So only the control plane (:8000) is
+# published on every interface, which is the one port a worker on the LAN needs.
+# PostgreSQL, MinIO and pgAdmin are bound to 127.0.0.1: reachable from the
+# presenting laptop (psql, the test suites, the demo's database window), and from
+# nowhere else. The passwords are still development defaults; each one below reads
+# an environment variable first (see .env.example) so a deployment that is not a
+# demo changes them without editing this file.
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:16
+    logging: *default-logging
+    environment:
+      POSTGRES_USER: fyp
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-fyp}"
+      POSTGRES_DB: fyp
+    ports:
+      # Loopback only: the database is never a LAN service (see the header).
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fyp -d fyp"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio
+    logging: *default-logging
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
+    ports:
+      # Loopback only, same reason as postgres: the control plane is MinIO's one
+      # client and reaches it over the compose network, not through these ports.
+      - "127.0.0.1:9000:9000"   # S3 API
+      - "127.0.0.1:9001:9001"   # web console
+    volumes:
+      - miniodata:/data
+    # The control plane waits for this, as it already does for postgres. Nothing
+    # touches MinIO at startup today, so the gap cost nothing yet; it is closed
+    # before the first thing that does. `mc` ships in the image.
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  control-plane:
+    build: ./control-plane
+    logging: *default-logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      # asyncpg driver for the app; alembic uses the same URL via an async env.py.
+      DATABASE_URL: "postgresql+asyncpg://fyp:${POSTGRES_PASSWORD:-fyp}@postgres:5432/fyp"
+      # Tunables (protocol.md §8 / brief §7). W5 consumes LEASE_TTL_S + REAPER_INTERVAL_S.
+      HEARTBEAT_INTERVAL_S: "3"
+      # The lease default is 60s (ruled 2026-08-29, raised from 15s): a machine that
+      # drops for under a minute should carry on rather than be fenced out. Written as
+      # an interpolation so the value can be overridden per-run without editing this
+      # file — which is how the DEMO gets 15s (scripts/stage_demo.ps1 sets it, and
+      # prints the effective value in its READY banner). This 60 must stay in step with
+      # `lease_ttl_s` in control-plane/app/config.py; a compose file cannot import
+      # Python, so the number lives in exactly those two places and nowhere else. The
+      # heartbeat does NOT move — NFR-4's 5-second promise rides on it.
+      LEASE_TTL_S: "${LEASE_TTL_S:-60}"
+      NODE_TIMEOUT_S: "12"
+      REAPER_INTERVAL_S: "3"
+      # MinIO — the control plane is the ONLY client (W6). These creds live here and
+      # NOWHERE on a worker: agents never receive MinIO variables (ISO 27001 A.8.31,
+      # "workers never hold storage credentials"). Keep it that way.
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_ACCESS_KEY: "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_SECRET_KEY: "${MINIO_ROOT_PASSWORD:-minioadmin}"
+      MINIO_BUCKET: "artifacts"
+      # W6 auth: a login is required for every user endpoint. Demo defaults — the
+      # bootstrap creates this one admin user on first startup if the table is empty.
+      JWT_SECRET: "${JWT_SECRET:-fyp-dev-jwt-secret-change-in-prod}"
+      ADMIN_USERNAME: "admin"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-fyp-admin}"
+      MAX_ARTIFACT_MB: "50"
+      # The per-file cap on a submitted input (protocol.md §8). Written as an
+      # interpolation for the same reason LEASE_TTL_S is: a proof that has to submit a
+      # dataset far larger than any demonstration needs can raise it for one run
+      # without editing this file, and the capture prints the value it ran at.
+      MAX_INPUT_MB: "${MAX_INPUT_MB:-100}"
+    ports:
+      - "8000:8000"
+    volumes:
+      # Dev bind-mount: code edits + autogenerated migrations land on the host.
+      - ./control-plane:/app
+      # The demo LAN's certificates (2026-08-22), read-only. Generate them with
+      # `python scripts/make_certs.py`; the Dockerfile serves HTTPS when
+      # server.pem is present here and plain HTTP when it is not, announcing
+      # which on its first log line. The directory is mounted whether or not it
+      # has anything in it, so turning TLS on is one command and no edit here.
+      - ./certs:/certs:ro
+
+  # pgAdmin: the database GUI. NOT part of the graded stack.
+  #   docker compose up -d                    -> postgres + minio + control-plane (unchanged)
+  #   docker compose --profile tools up -d    -> the above PLUS pgAdmin at :5050
+  # It comes up already connected to the fyp database (pgadmin/servers.json + a
+  # passfile the Dockerfile writes from POSTGRES_PASSWORD) in desktop mode, so
+  # there is no login page and no password to type. This replaces the old
+  # PowerShell psql window.
+  pgadmin:
+    build:
+      context: ./pgadmin      # official pgAdmin + the passfile written at build time, 0600 (see pgadmin/Dockerfile)
+      args:
+        POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-fyp}"
+    profiles: ["tools"]
+    logging: *default-logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Desktop mode means there is NO login page, so these two are only used to
+      # satisfy pgAdmin's own setup validation (email must be a real-looking domain;
+      # password must be >= 6 chars). You never type them.
+      PGADMIN_DEFAULT_EMAIL: "admin@admin.com"
+      PGADMIN_DEFAULT_PASSWORD: "fyp_pgadmin"
+      # Desktop mode = no login screen, no master password. Open the tab, you're in.
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      # Loopback only: a database GUI with no login page must never face the LAN.
+      - "127.0.0.1:5050:80"
+    volumes:
+      # servers.json is bind-mounted (editable, no rebuild needed to tweak it).
+      # The passfile is NOT bind-mounted - it is written into the image at 0600
+      # (Dockerfile), because a Windows bind mount would land at 0777 and libpq
+      # would reject it. It is no longer a file in the repository at all.
+      - ./pgadmin/servers.json:/pgadmin4/servers.json
+      - pgadmindata:/var/lib/pgadmin
+
+volumes:
+  pgdata:
+  miniodata:
+  pgadmindata:

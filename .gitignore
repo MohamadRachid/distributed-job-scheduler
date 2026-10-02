@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local env / secrets
+.env
+
+# Agent local state (node_id + token cached after register).
+# The glob also catches backups like agent_state.json.bak — they hold the token too.
+# The file is one per worker name: agent_state-<name>.json.
+agent_state.json*
+**/agent_state.json*
+agent_state-*.json*
+**/agent_state-*.json*
+
+# The throwaway compose override the experiment harness generates to flip a switch
+# for one measurement. Never committed — the tracked compose file is the system.
+docker-compose.experiment.yml
+
+# Per-agent stdout captured during a measurement run (noisy, regenerated).
+docs/evidence/experiments/_agent_logs/
+
+# The experiment stack lock (one measurement at a time). Runtime state.
+.experiment.lock
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Scratch state for the live scenario drivers: per-agent state files hold a NODE
+# TOKEN, so these directories never enter git.
+.lane10/
+.hover/
+.ckpt-live/
+.trainer-live/
+docs/evidence/sealed_proof_work/
+docs/evidence/starvation_proof_work/
+docs/evidence/server_restart_logs/
+
+# The certificate authority and server certificate. NEVER committed: ca.key and
+# server.key are private keys. Every machine generates its own with
+# `python scripts/make_certs.py`. The directory itself is kept so docker-compose can
+# always mount it, empty or not.
+certs/*
+!certs/.gitkeep

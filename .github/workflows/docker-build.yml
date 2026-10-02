@@ -1,0 +1,80 @@
+name: Docker build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  core-images:
+    name: Build control-plane + dummy workload
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build control-plane
+        uses: docker/build-push-action@v6
+        with:
+          context: control-plane
+          push: false
+          cache-from: type=gha,scope=control-plane
+          cache-to: type=gha,mode=max,scope=control-plane
+
+      - name: Build dummy workload
+        uses: docker/build-push-action@v6
+        with:
+          context: workloads/dummy
+          push: false
+          cache-from: type=gha,scope=dummy
+          cache-to: type=gha,mode=max,scope=dummy
+
+  trainer-image:
+    name: Build trainer (real PyTorch workload)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build trainer
+        uses: docker/build-push-action@v6
+        with:
+          context: workloads
+          file: workloads/trainer/Dockerfile
+          push: false
+          cache-from: type=gha,scope=trainer
+          cache-to: type=gha,mode=max,scope=trainer
+
+  # The demonstration's database GUI. It lives behind the compose `tools` profile,
+  # so nothing here built it until 2026-09-07 — the day a broken RUN instruction in
+  # its Dockerfile made `docker compose up --build` fail for every service and
+  # stopped stage_demo.ps1 dead. A Dockerfile the demonstration depends on gets a
+  # build check like any other.
+  pgadmin-image:
+    name: Build pgAdmin (demo database GUI)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build pgAdmin
+        uses: docker/build-push-action@v6
+        with:
+          context: pgadmin
+          push: false
+          cache-from: type=gha,scope=pgadmin
+          cache-to: type=gha,mode=max,scope=pgadmin
