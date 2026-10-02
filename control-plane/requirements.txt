@@ -15,7 +15,7 @@ pydantic==2.10.4
 pydantic-settings==2.7.0
 # W6 — results, artifacts, auth (FR-9/10/11).
 minio==7.2.15            # the ONE MinIO client, in the control plane only (workers never hold storage creds)
-PyJWT==2.13.0            # user JWTs (stateless auth; the pass card the server verifies by signature)
+PyJWT==2.15.1            # user JWTs (stateless auth; the pass card the server verifies by signature)
 bcrypt==4.2.1            # slow, salted password hash — a stolen users table does not give up passwords
 python-multipart==0.0.32 # FastAPI needs it to parse the multipart artifact upload
 # W6b — private job inputs (FR/NFR-7).

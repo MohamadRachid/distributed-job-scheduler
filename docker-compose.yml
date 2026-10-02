@@ -64,7 +64,9 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio
+    # The upstream minio/minio image was removed from Docker Hub in 2026; this is a
+    # community-maintained fork of the same server, pinned to one release.
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     logging: *default-logging
     command: server /data --console-address ":9001"
     environment:
